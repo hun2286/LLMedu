@@ -1,3 +1,5 @@
+# 기본 전처리 pdf 생성만 제거 
+
 import os
 from dotenv import load_dotenv
 from langchain_community.vectorstores import Chroma
