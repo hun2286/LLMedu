@@ -1,0 +1,10 @@
+.venv/
+
+.env
+
+pdf_chroma_db
+pdf_chroma_db_v2
+chroma_db
+wiki_chroma_db
+multi_pdf_chroma_db
+single_pdf_chroma_db
