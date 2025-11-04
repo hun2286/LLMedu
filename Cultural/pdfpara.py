@@ -1,4 +1,4 @@
-# 출처 중복 제거, 임베딩 병렬처리로 속도 상승
+# 출처 중복 제거, 임베딩 병렬처리로 속도 상승 cpu라서 딱히 속도 증가 없음 
 
 import os
 from dotenv import load_dotenv

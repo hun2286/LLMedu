@@ -1,4 +1,4 @@
-# 기본 전처리 pdf 생성만 제거 
+# 기본 전처리 pdf 생성만 제거 동일 출처 합쳐서 한 번만 출력
 
 import os
 from dotenv import load_dotenv
