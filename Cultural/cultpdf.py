@@ -28,7 +28,7 @@ output_pdf_path = "result_log.pdf"
 # llm / embedding
 llm = ChatOpenAI(
     model = "gpt-4o-mini", 
-    temperature=0.2, 
+    temperature=0.2,
     max_tokens=6000,
     openai_api_key=api_key
     )
@@ -38,7 +38,7 @@ embedding_model = HuggingFaceEmbeddings(
 )
 
 # 폰트 등록
-font_path = r"C:\Users\BGR_NC_2_NOTE\Desktop\LLMedu\fonts"
+font_path = r"C:\Users\BGR_NC_2_NOTE\Desktop\Project\LLMedu\fonts"
 pdfmetrics.registerFont(TTFont('NanumGothic', os.path.join(font_path, 'NanumGothic.ttf')))
 pdfmetrics.registerFont(TTFont('NanumGothicBold', os.path.join(font_path, 'NanumGothicBold.ttf')))
 
