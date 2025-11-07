@@ -1,3 +1,5 @@
+# 출처를 각 답변마다 출력
+
 import os
 import fitz
 import io
@@ -17,11 +19,12 @@ from PyPDF2 import PdfReader, PdfWriter
 # 추가
 from collections import defaultdict
 
+
 # 환경 설정
 load_dotenv()
 api_key = os.getenv("OPENAI_API_KEY")
 
-pdf_folder = r"C:\Users\BGR_NC_2_NOTE\Desktop\pdfs\20151103"
+pdf_folder = r"C:\Users\BGR_NC_2_NOTE\Desktop\pdfs\20251106"
 persist_dir = "./mk_pdf_chroma_db2"
 output_pdf_path = "result_log.pdf"
 
@@ -110,7 +113,7 @@ else:
 # MMR 검색 기반 Retriever
 retriever = vectorstore.as_retriever(
     search_type="mmr",
-    search_kwargs={"k": 20, "fetch_k": 30, "lambda_mult": 0.5}
+    search_kwargs={"k": 5, "fetch_k": 15, "lambda_mult": 0.5}
 )
 
 # RAG 기반 답변 생성
@@ -132,13 +135,17 @@ def rag_answer(question):
     context = "\n\n".join(context_texts)
 
     # 출처 정리
+    # sources = sorted(set([doc.metadata.get("source", "출처 없음") for doc in retriever_docs]))
+    # sources_text = ", ".join(sources)
+
+    # 출처 개행으로 변경했음
     sources = sorted(set([doc.metadata.get("source", "출처 없음") for doc in retriever_docs]))
-    sources_text = ", ".join(sources)
+    sources_text = "\n".join([f"[출처: {src}]" for src in sources])
 
     messages = [
         SystemMessage(content="""
             당신은 여러 PDF 문서를 참고하여 질문에 답하는 전문가입니다.
-            - 답변은 '첫 번째', '두 번째', '세 번째', '네 번째'와 같이 **항목별로 구분된 형태**로 작성하세요.
+            - 답변은 **항목별로 구분된 형태**로 작성하세요.
             - 각 항목은 한 줄 띄우기로 구분하여 명확히 구분되게 하세요.
             - 질문에 대해 가능한 한 풍부하게 설명하세요.
             - 여러 문서의 내용을 통합하여 한 문단 이상의 답변을 작성하세요.
@@ -265,3 +272,5 @@ if __name__ == "__main__":
             print("저장 완료")
         else:
             print("저장하지 않고 다음으로 넘어갑니다.")
+
+
