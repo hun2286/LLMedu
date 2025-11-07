@@ -11,3 +11,7 @@ chromadb
 PyMuPDF
 PyPDF2
 reportlab
+
+# tesserect ocr 
+pytesseract
+pillow
