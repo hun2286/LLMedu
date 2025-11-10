@@ -15,3 +15,7 @@ reportlab
 # tesserect ocr 
 pytesseract
 pillow
+
+# paddle ocr
+paddleocr
+paddlepaddle

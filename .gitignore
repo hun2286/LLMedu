@@ -12,6 +12,8 @@ single_pdf_chroma_db
 mk_pdf_chroma_db
 doc_chroma_db
 mk_pdf_chroma_db2
+vector_dbs
+vector_dbs1
 
 # 생성된 pdf
 *.pdf
