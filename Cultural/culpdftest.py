@@ -52,9 +52,10 @@ def pdf_to_markdown(pdf_path):
                     else:
                         page_text += f"{text}\n\n"
                 md_text += f"# Page {i + 1}\n\n{page_text}"
+                
         return md_text
     except Exception:
-        print(f"[오류] PDF 변환 실패 : {pdf_path}")
+        print(f"[오류] PDF 변환 실패 : {pdf_path}") 
         return ""
 
 def load_pdf_safe(pdf_path, min_text_len=20):
