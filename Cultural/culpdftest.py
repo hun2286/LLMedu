@@ -3,6 +3,7 @@
 
 import os
 import fitz
+import re
 from dotenv import load_dotenv
 from langchain_community.vectorstores import Chroma
 from langchain_community.embeddings import HuggingFaceEmbeddings
@@ -185,7 +186,10 @@ def rag_answer(question):
         if not stripped:
             final_lines.append("")
             continue
-        # 제목에 번호 붙이는 부분 제거
+        # '###' 제거
+        stripped = stripped.lstrip("#").strip()
+        # 숫자 + 점 제거 (예: 1. 2. 3. …)
+        stripped = re.sub(r"^\d+\.\s*", "", stripped)
         final_lines.append(stripped)
 
     if sources_to_show:
@@ -194,7 +198,7 @@ def rag_answer(question):
         for s in sources_to_show:
             final_lines.append(f"[출처: {s}]")
 
-    return "\n".join(final_lines)
+    return "\n".join(final_lines) 
 
 # 실행
 if __name__ == "__main__":
