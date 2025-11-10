@@ -14,7 +14,7 @@ load_dotenv()
 api_key = os.getenv("OPENAI_API_KEY")
 
 pdf_folder = r"C:\Users\BGR_NC_2_NOTE\Desktop\pdfs\20251106" 
-persist_base_dir = r"./vector_dbs1"  
+persist_base_dir = r"./vector_dbs1"
 os.makedirs(persist_base_dir, exist_ok=True)
 
 # LLM / 임베딩 설정
