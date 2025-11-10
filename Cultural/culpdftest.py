@@ -52,7 +52,7 @@ def pdf_to_markdown(pdf_path):
                     else:
                         page_text += f"{text}\n\n"
                 md_text += f"# Page {i + 1}\n\n{page_text}"
-                
+
         return md_text
     except Exception:
         print(f"[오류] PDF 변환 실패 : {pdf_path}") 
@@ -152,6 +152,7 @@ def rag_answer(question):
     # 부족하면 유사도 순으로 추가
     if vectorstore:
         all_sources = sorted(set([doc.metadata.get("source", "출처 없음") for doc in retriever_docs]))
+        
         for s in all_sources:
             if len(sources_used) >= 4:  # 최소 4개 확보
                 break
