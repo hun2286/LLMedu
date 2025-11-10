@@ -1,4 +1,5 @@
 # 스캔본 제외하고 276개 pdf rag작업 해보는 코드
+# 스캔본은 텍스트 길이 판단해서 작으면 반환값을 목록에 넣어서 알려줌 (스캔본은 청크 생략)
 
 import os
 import fitz
@@ -97,7 +98,7 @@ def load_all_pdfs(pdf_folder):
 
 # Vector DB 구축 (DB 재사용)
 if not os.path.exists(persist_dir) or not os.listdir(persist_dir):
-    print("[DB 없음] 새로 구축합니다.")
+    print("DB 새로 생성")
     docs = load_all_pdfs(pdf_folder)
     if docs:
         text_splitter = RecursiveCharacterTextSplitter(chunk_size=1300, chunk_overlap=300)
@@ -113,14 +114,14 @@ if not os.path.exists(persist_dir) or not os.listdir(persist_dir):
         print("청크 생성 가능한 문서가 없습니다. DB 생성 생략.")
         vectorstore = None
 else:
-    print("[DB 있음] 기존 DB를 재사용합니다.")
+    print("기존 DB를 재사용")
     vectorstore = Chroma(persist_directory=persist_dir, embedding_function=embedding_model)
 
 if vectorstore:
     # MMR 검색 기반 Retriever
     retriever = vectorstore.as_retriever(
         search_type="similarity",
-        search_kwargs={"k": 8}
+        search_kwargs={"k": 10}
     )
 else:
     retriever = None
@@ -143,7 +144,20 @@ def rag_answer(question):
         
     context = "\n\n".join(context_texts)
     
-    sources = sorted(set([doc.metadata.get("source", "출처 없음") for doc in retriever_docs]))
+    # 실제 답변에 사용된 출처 우선 + 최소 4개, 최대 5개
+    sources_used = sorted(set([doc.metadata.get("source", "출처 없음") for doc in retriever_docs if doc.page_content.strip() in context_texts]))
+    
+    # 부족하면 유사도 순으로 추가
+    if vectorstore:
+        all_sources = sorted(set([doc.metadata.get("source", "출처 없음") for doc in retriever_docs]))
+        for s in all_sources:
+            if len(sources_used) >= 4:  # 최소 4개 확보
+                break
+            if s not in sources_used:
+                sources_used.append(s)
+                
+    # 최대 5개로 제한
+    sources_to_show = sources_used[:5]
 
     messages = [
         SystemMessage(content="""
@@ -165,23 +179,19 @@ def rag_answer(question):
     # 후처리: 제목에 번호 붙이고, 출처 맨 아래
     lines = answer.split("\n")
     final_lines = []
-    counter = 1
+
     for line in lines:
         stripped = line.strip()
         if not stripped:
             final_lines.append("")
             continue
-        if stripped.startswith("#"):
-            stripped = stripped.lstrip("#").strip()
-            final_lines.append(f"{counter}. {stripped}")
-            counter += 1
-        else:
-            final_lines.append(stripped)
+        # 제목에 번호 붙이는 부분 제거
+        final_lines.append(stripped)
 
-    if sources:
+    if sources_to_show:
         final_lines.append("")
         final_lines.append("-"*50)
-        for s in sources:
+        for s in sources_to_show:
             final_lines.append(f"[출처: {s}]")
 
     return "\n".join(final_lines)
