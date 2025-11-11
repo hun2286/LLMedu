@@ -4,9 +4,9 @@ import pytesseract
 import os
 
 # PDF 경로
-pdf_path = r"C:\Users\user\Desktop\pdfs\20251106\1999_경기도도당굿_05_Ⅱ_경기도 도당굿의 내용_19.pdf"
+pdf_path = r"C:\Users\user\Desktop\pdfs\scanpdf목록\1999_경기도도당굿_05_Ⅱ_경기도 도당굿의 내용_19.pdf"
 # 저장할 텍스트 경로
-txt_path = r"C:\Users\user\Desktop\pdfs\example_ocr.txt"
+txt_path = r"C:\Users\user\Desktop\pdfs\example_ocr1.txt"
 
 # Tesseract 경로
 pytesseract.pytesseract.tesseract_cmd = r"C:\Program Files\Tesseract-OCR\tesseract.exe"
@@ -27,7 +27,7 @@ def ocr_pdf(pdf_path, max_pages=3):  # max_pages 매개변수 추가
     return text
 
 # OCR 실행 (처음 2페이지만)
-ocr_result = ocr_pdf(pdf_path, max_pages=2)
+ocr_result = ocr_pdf(pdf_path, max_pages=3)
 
 # 텍스트 파일로 저장
 with open(txt_path, "w", encoding="utf-8") as f:
