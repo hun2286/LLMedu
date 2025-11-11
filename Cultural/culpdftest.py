@@ -152,7 +152,7 @@ def rag_answer(question):
     # 부족하면 유사도 순으로 추가
     if vectorstore:
         all_sources = sorted(set([doc.metadata.get("source", "출처 없음") for doc in retriever_docs]))
-        
+
         for s in all_sources:
             if len(sources_used) >= 4:  # 최소 4개 확보
                 break
@@ -168,7 +168,7 @@ def rag_answer(question):
             - 제공된 문서 내용만 활용해서 답변하세요.
             - 문서에 없는 내용은 절대 추가하지 말고, 없으면 '정보 없음'이라고 표시하세요.
             - 답변은 항목별로 구분하고, 각 항목마다 충분한 설명과 예시를 포함하세요.
-            - 최소 200단어 이상 작성하고, 가능한 한 문서 내용을 풍부하게 통합하세요.
+            - 최소 300단어 이상 작성하고, 가능한 한 문서 내용을 풍부하게 통합하세요.
             - 여러 문서의 내용을 종합해 한 문단 이상의 자세한 답변을 작성하세요.
             - 질문에 등장하는 단어를 각각 구분하여 정확히 답변하세요.
             - 가능한 한 문서 내 문맥과 키워드에 기반하여 정확하게 답변하세요.
@@ -192,6 +192,10 @@ def rag_answer(question):
         stripped = stripped.lstrip("#").strip()
         # 숫자 + 점 제거 (예: 1. 2. 3. …)
         stripped = re.sub(r"^\d+\.\s*", "", stripped)
+        # **굵은글씨** 제거
+        stripped = re.sub(r"\*\*(.*?)\*\*", r"\1", stripped)
+        # *기울임* 제거
+        stripped = re.sub(r"\*(.*?)\*", r"\1", stripped)
         final_lines.append(stripped)
 
     if sources_to_show:
@@ -200,7 +204,7 @@ def rag_answer(question):
         for s in sources_to_show:
             final_lines.append(f"[출처: {s}]")
 
-    return "\n".join(final_lines) 
+    return "\n".join(final_lines)
 
 # 실행
 if __name__ == "__main__":
