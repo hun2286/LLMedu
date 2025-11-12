@@ -60,18 +60,15 @@ def pdf_to_markdown(pdf_path):
     except Exception:
         print(f"[오류] PDF 변환 실패 : {pdf_path}") 
         return ""
-
-def load_pdf_safe(pdf_path, min_text_len=20):
-    """
-    PDF를 읽어서 Document로 변환.
-    텍스트 길이가 min_text_len보다 작으면 None 반환 (스캔본 판단)
-    """
+    
+def load_pdf_safe(pdf_path):
     md_text = pdf_to_markdown(pdf_path)
-    if md_text and len(md_text.strip()) >= min_text_len:
-        return [Document(page_content=md_text,
-                         metadata={"source": os.path.splitext(os.path.basename(pdf_path))[0]})]
-    else:
-        return None  # 텍스트가 너무 적으면 실패로 간주
+    if not md_text.strip():  # 완전히 비었을 때만 제외
+        return None
+    return [Document(
+        page_content=md_text,
+        metadata={"source": os.path.splitext(os.path.basename(pdf_path))[0]}
+    )]
 
 def load_all_pdfs(pdf_folder):
     all_docs = []
@@ -149,14 +146,8 @@ def rag_answer(question):
         
     context = "\n\n".join(context_texts)
     
-    # 🔹 출처 표시 시 필터링 (표지, 차례, 목차 등 제거)
-    skip_keywords = ["표지", "차례", "목차", "contents", "서문", "머리말", "발간사"]
     sources_used = []
     for doc in retriever_docs:
-        content = doc.page_content.strip()
-        # 키워드 포함 또는 텍스트 짧으면 제외
-        if any(k in content[:300].lower() for k in skip_keywords) or len(content) < 100:
-            continue
         source_name = doc.metadata.get("source", "출처 없음")
         if source_name not in sources_used:
             sources_used.append(source_name)
@@ -206,7 +197,7 @@ def rag_answer(question):
 
     if sources_to_show:
         final_lines.append("")
-        final_lines.append("-"*50)
+        final_lines.append("-"*60)
         for s in sources_to_show:
             final_lines.append(f"[출처: {s}]")
 
