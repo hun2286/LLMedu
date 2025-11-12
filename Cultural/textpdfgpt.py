@@ -237,4 +237,4 @@ if __name__ == "__main__":
         answer = rag_answer(query)
         print("\n[답변]:\n")
         typewriter_print(answer, delay=0.02) 
-        print("-" * 50)
+        print("-" * 60)
