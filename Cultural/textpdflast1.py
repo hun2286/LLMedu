@@ -240,7 +240,7 @@ def typewriter_print(text, delay=0.02):
 # ============================
 if __name__ == "__main__":
     print("=" * 60)
-    print("RAG 질의응답 시스템 (출처 자동 랭킹 포함, 항목별 개행)")
+    print("RAG 질의응답 시스템")
     print("=" * 60)
 
     while True:
