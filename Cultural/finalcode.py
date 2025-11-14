@@ -1,13 +1,13 @@
-# 스캔본 제외하고 276개 pdf rag작업 해보는 코드
-# 스캔본은 텍스트 길이 판단해서 작으면 반환값을 목록에 넣어서 알려줌 (스캔본은 청크 생략)
-# 텍스트 pdf는 이걸 최종으로 이제 스캔본 처리하는거 해야함
+# 스캔본 제외하고 PDF RAG 작업 코드 (출처 랭킹 포함)
 
 import os
 import sys
 import time
 import fitz
 import re
+import numpy as np
 from dotenv import load_dotenv
+from sklearn.feature_extraction.text import TfidfVectorizer
 from langchain_community.vectorstores import Chroma
 from langchain_community.embeddings import HuggingFaceEmbeddings
 from langchain_openai import ChatOpenAI
@@ -19,7 +19,7 @@ load_dotenv()
 api_key = os.getenv("OPENAI_API_KEY")
 
 pdf_folder = r"C:\Users\user\Desktop\pdfs\20251106"
-persist_dir = "./mk_pdf_chroma_db3"
+persist_dir = "./db1"
 
 # LLM / 임베딩 설정
 llm = ChatOpenAI(
@@ -55,12 +55,11 @@ def pdf_to_markdown(pdf_path):
                     else:
                         page_text += f"{text}\n\n"
                 md_text += f"# Page {i + 1}\n\n{page_text}"
-
         return md_text
     except Exception:
         print(f"[오류] PDF 변환 실패 : {pdf_path}") 
         return ""
-    
+
 def load_pdf_safe(pdf_path):
     md_text = pdf_to_markdown(pdf_path)
     if not md_text.strip():  # 완전히 비었을 때만 제외
@@ -70,9 +69,10 @@ def load_pdf_safe(pdf_path):
         metadata={"source": os.path.splitext(os.path.basename(pdf_path))[0]}
     )]
 
+# 전체 PDF 로드
 def load_all_pdfs(pdf_folder):
     all_docs = []
-    failed_pdfs = []  # 텍스트 부족 PDF 목록
+    failed_pdfs = []
     pdf_files = [f for f in os.listdir(pdf_folder) if f.lower().endswith(".pdf")]
     print(f"총 PDF 파일 수: {len(pdf_files)}\n")
     
@@ -80,7 +80,7 @@ def load_all_pdfs(pdf_folder):
         pdf_path = os.path.join(pdf_folder, pdf_file)
         try:
             docs = load_pdf_safe(pdf_path)
-            if not docs:  # 텍스트 부족 → 청크 생성 불가
+            if not docs:
                 failed_pdfs.append(pdf_file)
                 print(f"{pdf_file} → 텍스트 부족 / 청크 생성 불가")
             else:
@@ -119,38 +119,30 @@ else:
     print("기존 DB를 재사용")
     vectorstore = Chroma(persist_directory=persist_dir, embedding_function=embedding_model)
 
-if vectorstore:
-    retriever = vectorstore.as_retriever(
-        search_type="similarity",
-        search_kwargs={"k": 5}
-    )
-else:
-    retriever = None
+retriever = vectorstore.as_retriever(search_type="similarity", search_kwargs={"k": 3}) if vectorstore else None
 
-# RAG 기반 답변 생성
+# RAG 답변 함수
 def rag_answer(question):
     if not retriever:
         return "DB가 없습니다. 먼저 텍스트가 있는 PDF를 처리하세요."
 
+    # 검색
     retriever_docs = retriever.invoke(question)
     if isinstance(retriever_docs, Document):
         retriever_docs = [retriever_docs]
 
-    # ------------------ LLM 입력용 컨텍스트 ------------------
+    # LLM 입력용 컨텍스트
     context_texts = [doc.page_content.strip() for doc in retriever_docs if doc.page_content.strip()]
     context = "\n\n".join(context_texts)
 
-    # ------------------ LLM 질의응답 ------------------
+    # LLM 질의응답
     messages = [
         SystemMessage(content="""
             당신은 여러 PDF 문서를 참고하여 질문에 답하는 전문가입니다.
-            - 제공된 문서 내용만 활용해서 답변하세요.
-            - 문서에 없는 내용은 절대 추가하지 말고, 없으면 '정보 없음'이라고 표시하세요.
-            - 답변은 항목별로 구분하고, 각 항목마다 충분한 설명과 예시를 포함하세요.
-            - 최소 300단어 이상 작성하고, 가능한 한 문서 내용을 풍부하게 통합하세요.
-            - 여러 문서의 내용을 종합해 한 문단 이상의 자세한 답변을 작성하세요.
-            - 질문에 등장하는 단어를 각각 구분하여 정확히 답변하세요.
-            - 가능한 한 문서 내 문맥과 키워드에 기반하여 정확하게 답변하세요.
+            - 문서 내용만 활용해 답변하세요.
+            - 문서에 없는 내용은 추가하지 말고, 없으면 '정보 없음'이라고 표시하세요.
+            - 각 항목은 제목 내용 한 줄 빈 줄 순서로 작성하세요.
+            - 최소 300단어 이상 작성하고, 가능한 한 문서 내용을 통합하세요.
         """),
         HumanMessage(content=f"문서 내용:\n{context}\n\n질문:\n{question}")
     ]
@@ -158,48 +150,59 @@ def rag_answer(question):
     response = llm.invoke(messages)
     answer = response.content
 
-    # ------------------ 후처리: 제목/번호 제거 ------------------
+    # ---------------------
+    # 후처리: 연속 빈 줄 1줄로 축소 + 제목/번호 제거
+    # ---------------------
     lines = answer.split("\n")
-    final_lines = []
+    cleaned_lines = []
+    prev_empty = False
     for line in lines:
         stripped = line.strip()
         if not stripped:
-            final_lines.append("")
-            continue
-        stripped = stripped.lstrip("#").strip()
-        stripped = re.sub(r"^\d+\.\s*", "", stripped)
-        stripped = re.sub(r"\*\*(.*?)\*\*", r"\1", stripped)
-        stripped = re.sub(r"\*(.*?)\*", r"\1", stripped)
-        final_lines.append(stripped)
+            if not prev_empty:
+                cleaned_lines.append("")
+            prev_empty = True
+        else:
+            stripped = re.sub(r"^[#*\d\.\s]+", "", stripped)
+            cleaned_lines.append(stripped)
+            prev_empty = False
+    cleaned_answer = "\n".join(cleaned_lines).strip()
 
-# ------------------ 실제 사용된 출처만 ------------------
+    # ---------------------
+    # 답변이 없으면 "정보 없음"만 반환
+    # ---------------------
+    if not cleaned_answer or cleaned_answer.lower() == "정보 없음":
+        return "정보 없음"
+
+    # ---------------------
+    # 답변이 있으면 retriever_docs 기반 출처 표시
+    # ---------------------
     used_sources = []
-    answer_lower = answer.lower()
     for doc in retriever_docs:
-        source_name = doc.metadata.get("source", "출처 없음")
-        # 청크 단위로 포함 여부 체크
-        if any(chunk.strip() in answer_lower for chunk in doc.page_content.lower().split("\n\n")):
-            if source_name not in used_sources:
-                used_sources.append(source_name)
+        src = doc.metadata.get("source", "출처 없음")
+        if src not in used_sources:
+            used_sources.append(src)
 
-    # 최소 하나는 나오도록 강제
+    # 최소 1개 강제 표시
     if not used_sources and retriever_docs:
         used_sources.append(retriever_docs[0].metadata.get("source", "출처 없음"))
 
-    if used_sources:
-        final_lines.append("")
-        final_lines.append("-" * 60)
-        for s in used_sources:
-            final_lines.append(f"[출처: {s}]")
-        return "\n".join(final_lines)
+    # 최종 출력
+    output = cleaned_answer + "\n\n" + ("-" * 60) + "\n"
+    for i, s in enumerate(used_sources):
+        output += f"[출처: {s}]"
+        if i < len(used_sources) - 1:
+            output += "\n"
 
-# GPT처럼 한 글자씩 출력하는 함수
+    return output
+
+# GPT처럼 한 글자씩 출력
 def typewriter_print(text, delay=0.02):
     for char in text:
         sys.stdout.write(char)
         sys.stdout.flush()
         time.sleep(delay)
-    print()  # 마지막 줄바꿈
+    print()
 
 # 실행
 if __name__ == "__main__":
@@ -215,5 +218,5 @@ if __name__ == "__main__":
 
         answer = rag_answer(query)
         print("\n[답변]:\n")
-        typewriter_print(answer, delay=0.02) 
+        typewriter_print(answer, delay=0.02)
         print("-" * 60)
