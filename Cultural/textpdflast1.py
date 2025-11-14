@@ -1,6 +1,4 @@
-# ============================
 # 스캔본 제외하고 PDF RAG 작업 코드 (출처 랭킹 포함)
-# ============================
 
 import os
 import sys
@@ -16,18 +14,14 @@ from langchain_openai import ChatOpenAI
 from langchain_text_splitters import RecursiveCharacterTextSplitter
 from langchain.schema import Document, SystemMessage, HumanMessage
 
-# ============================
 # 환경 설정
-# ============================
 load_dotenv()
 api_key = os.getenv("OPENAI_API_KEY")
 
 pdf_folder = r"C:\Users\user\Desktop\pdfs\20251106"
 persist_dir = "./db1"
 
-# ============================
 # LLM / 임베딩 설정
-# ============================
 llm = ChatOpenAI(
     model="gpt-4o-mini",
     temperature=0.3,
@@ -39,9 +33,7 @@ embedding_model = HuggingFaceEmbeddings(
     model_name="bespin-global/klue-sroberta-base-continue-learning-by-mnr"
 )
 
-# ============================
 # PDF → 마크다운 변환
-# ============================
 def pdf_to_markdown(pdf_path):
     md_text = ""
     try:
@@ -77,9 +69,7 @@ def load_pdf_safe(pdf_path):
         metadata={"source": os.path.splitext(os.path.basename(pdf_path))[0]}
     )]
 
-# ============================
 # 전체 PDF 로드
-# ============================
 def load_all_pdfs(pdf_folder):
     all_docs = []
     failed_pdfs = []
@@ -108,9 +98,7 @@ def load_all_pdfs(pdf_folder):
     
     return all_docs
 
-# ============================
 # Vector DB 구축 (DB 재사용)
-# ============================
 if not os.path.exists(persist_dir) or not os.listdir(persist_dir):
     print("DB 새로 생성")
     docs = load_all_pdfs(pdf_folder)
@@ -133,9 +121,7 @@ else:
 
 retriever = vectorstore.as_retriever(search_type="similarity", search_kwargs={"k": 5}) if vectorstore else None
 
-# ============================
 # TF-IDF 기반 출처 랭킹
-# ============================
 def rank_sources_by_keywords(answer_text, retriever_docs, top_k=3):
     docs_texts = [doc.page_content for doc in retriever_docs]
     corpus = docs_texts + [answer_text]
@@ -151,9 +137,7 @@ def rank_sources_by_keywords(answer_text, retriever_docs, top_k=3):
     ranked_docs = [retriever_docs[i] for i in ranked_indices]
     return ranked_docs
 
-# ============================
 # RAG 답변 함수
-# ============================
 def rag_answer(question):
     if not retriever:
         return "DB가 없습니다. 먼저 텍스트가 있는 PDF를 처리하세요."
@@ -225,9 +209,7 @@ def rag_answer(question):
 
     return output
 
-# ============================
 # GPT처럼 한 글자씩 출력
-# ============================
 def typewriter_print(text, delay=0.02):
     for char in text:
         sys.stdout.write(char)
@@ -235,9 +217,7 @@ def typewriter_print(text, delay=0.02):
         time.sleep(delay)
     print()
 
-# ============================
 # 실행
-# ============================
 if __name__ == "__main__":
     print("=" * 60)
     print("RAG 질의응답 시스템")
