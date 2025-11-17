@@ -150,9 +150,7 @@ def rag_answer(question):
     response = llm.invoke(messages)
     answer = response.content
 
-    # ---------------------
     # 후처리: 연속 빈 줄 1줄로 축소 + 제목/번호 제거
-    # ---------------------
     lines = answer.split("\n")
     cleaned_lines = []
     prev_empty = False
@@ -168,15 +166,11 @@ def rag_answer(question):
             prev_empty = False
     cleaned_answer = "\n".join(cleaned_lines).strip()
 
-    # ---------------------
     # 답변이 없으면 "정보 없음"만 반환
-    # ---------------------
     if not cleaned_answer or cleaned_answer.lower() == "정보 없음":
         return "정보 없음"
 
-    # ---------------------
     # 답변이 있으면 retriever_docs 기반 출처 표시
-    # ---------------------
     used_sources = []
     for doc in retriever_docs:
         src = doc.metadata.get("source", "출처 없음")
