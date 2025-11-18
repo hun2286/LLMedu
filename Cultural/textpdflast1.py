@@ -166,9 +166,7 @@ def rag_answer(question):
     response = llm.invoke(messages)
     answer = response.content
 
-    # ---------------------
     # 후처리: 연속된 빈 줄 1줄로 축소 + 제목/번호 제거
-    # ---------------------
     lines = answer.split("\n")
     cleaned_lines = []
     prev_empty = False
@@ -186,9 +184,7 @@ def rag_answer(question):
 
     cleaned_answer = "\n".join(cleaned_lines)
 
-    # ---------------------
     # TF-IDF 기반 상위 출처 추정
-    # ---------------------
     ranked_docs = rank_sources_by_keywords(cleaned_answer, retriever_docs, top_k=3)
     used_sources = []
     for doc in ranked_docs:
@@ -209,7 +205,7 @@ def rag_answer(question):
 
     return output
 
-# GPT처럼 한 글자씩 출력
+# 한 글자씩 출력
 def typewriter_print(text, delay=0.02):
     for char in text:
         sys.stdout.write(char)
