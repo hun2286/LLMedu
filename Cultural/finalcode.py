@@ -16,8 +16,8 @@ from langchain.schema import Document, SystemMessage, HumanMessage
 load_dotenv()
 api_key = os.getenv("OPENAI_API_KEY")
 
-pdf_folder = r"C:\Users\user\Desktop\pdfs\20251106"
-persist_dir = "./db1"
+pdf_folder = r"C:\Users\user\Desktop\pdfs\유산청pdf자료\자연유산"
+persist_dir = "./Natural_db"
 
 # LLM / 임베딩 설정
 llm = ChatOpenAI(
