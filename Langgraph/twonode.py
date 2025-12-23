@@ -22,10 +22,10 @@ def call_model(state: State):
     history_limit = 10
     managed_messages = state["messages"][-history_limit:]
 
-    print(f"\n[시스템] 전체 메시지 {len(state['messages'])}개 중 최근 {len(managed_messages)}개만 참조합니다.")
+    print(f"\n[시스템] 전체 메시지 {len(state['messages'])}개 중 최근 {len(managed_messages)}개만 참조합니다.\n")
     
     response = model.invoke(managed_messages)
-    print(f">>> [노드 1 결과 (교정 전)]: {response.content}")
+    print(f">>> [노드 1 결과 (교정 전)]: {response.content}\n")
     return {"messages": [response]}
 
 # [노드 2] 말투 교정
