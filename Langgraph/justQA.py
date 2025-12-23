@@ -1,3 +1,5 @@
+# 단순 질의응답 코드
+
 import os
 from typing import Annotated, TypedDict
 from typing_extensions import List

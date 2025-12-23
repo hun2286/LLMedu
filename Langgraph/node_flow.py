@@ -1,3 +1,5 @@
+# 히스토리 10개만 기억하고 노드 2개로 답변하는 코드
+
 import os
 from typing import Annotated, TypedDict
 from typing_extensions import List
@@ -17,9 +19,13 @@ model = ChatOpenAI(model="gpt-4o-mini", temperature=0)
 
 # [노드 1] 일반 답변 생성
 def call_model(state: State):
-    response = model.invoke(state["messages"])
-    # 중간 확인을 위해 출력
-    print(f"\n>>> [노드 1 결과 (교정 전)]: {response.content}")
+    history_limit = 10
+    managed_messages = state["messages"][-history_limit:]
+
+    print(f"\n[시스템] 전체 메시지 {len(state['messages'])}개 중 최근 {len(managed_messages)}개만 참조합니다.")
+    
+    response = model.invoke(managed_messages)
+    print(f">>> [노드 1 결과 (교정 전)]: {response.content}")
     return {"messages": [response]}
 
 # [노드 2] 말투 교정
