@@ -1,21 +1,22 @@
+# 핵심
 langchain==0.3.26
+langchain-core<1.0.0
+langgraph<0.3.0
+
+# 도구
 langchain-chroma==0.2.5
 langchain-community==0.3.27
 langchain-huggingface==0.3.1
 langchain-openai==0.3.28
+
+# 유틸리티
+typing-extensions
+python-dotenv
+
+# 데이터 및 문서 처리
 sentence-transformers==5.0.0
 transformers==4.53.3
-
-python-dotenv
 chromadb
 PyMuPDF
 PyPDF2
 reportlab
-
-# tesserect ocr 
-pytesseract
-pillow
-
-# paddle ocr
-paddleocr
-paddlepaddle
