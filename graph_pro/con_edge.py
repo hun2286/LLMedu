@@ -15,17 +15,15 @@ from langgraph.graph import StateGraph, END
 load_dotenv()
 persist_dir = "../database/Cultural_db"
 
-# 모델 초기화
-llm = ChatOpenAI(model="gpt-4o", temperature=0.1)
+llm = ChatOpenAI(model="gpt-4o", temperature=0) # 판단 정확도를 위해 0 설정
 embedding_model = HuggingFaceEmbeddings(model_name="bespin-global/klue-sroberta-base-continue-learning-by-mnr")
 web_search_tool = DuckDuckGoSearchRun()
 
-# DB 로드 확인
 if os.path.exists(persist_dir) and os.listdir(persist_dir):
     vectorstore = Chroma(persist_directory=persist_dir, embedding_function=embedding_model)
     retriever = vectorstore.as_retriever(search_kwargs={"k": 5})
 else:
-    print(f"[오류] DB를 찾을 수 없습니다: {persist_dir}"); sys.exit()
+    print(f"[오류] DB를 찾을 수 없습니다."); sys.exit()
 
 # ---------------------------
 # 2. 그래프 상태(State) 정의
@@ -44,17 +42,18 @@ class GraphState(TypedDict):
 def retrieve_node(state: GraphState):
     print("\n--- [Node] DB 검색 수행 중 ---")
     docs = retriever.invoke(state["question"])
-    
-    new_context = [doc.page_content for doc in docs]
-    new_sources = [doc.metadata.get('source', '알 수 없음') for doc in docs]
-    
-    return {"context": new_context, "sources": new_sources, "retry_count": 0}
+    return {
+        "context": [doc.page_content for doc in docs],
+        "sources": [doc.metadata.get('source', '알 수 없음') for doc in docs],
+        "retry_count": 0
+    }
 
 def web_search_node(state: GraphState):
-    print("\n--- [Node] 정보 부족: 웹 검색 수행 중 ---")
+    print("\n--- [Node] 정보 부족 또는 부적합: 웹 검색 수행 중 ---")
     results = web_search_tool.invoke(state["question"])
+    # 웹 검색 결과는 출처 필터링을 위해 특정 이름을 부여
     return {
-        "context": [f"[실시간 웹 정보] {results}"],
+        "context": [f"[W] {results}"],
         "sources": ["실시간 웹 검색 결과"]
     }
 
@@ -69,9 +68,7 @@ def generate_node(state: GraphState):
     
     prompt = [
         ("system", f"""당신은 제공된 문서만을 기반으로 질문에 답하는 전문 분석가입니다.
-당신의 모든 답변은 아래의 엄격한 지침을 따라야 합니다.
-
-[핵심 지침]
+엄격 지침:
 1. **정보 근거:** 답변은 반드시 제공된 [문서 내용]에 근거해야 합니다. 문서에 내용이 없으면 **"정보 없음"**이라고만 답변하세요.
 2. **답변 형식 (Markdown):** 답변은 **마크다운(Markdown) 형식**을 사용하여 제목(##), 목록(*), 볼드체(**) 등으로 구조화하여 작성하십시오.
 3. **내용 확장:** 문서 내용이 충분할 경우, 단순 요약을 넘어 **핵심 개념의 의미, 구체적 사례, 역사적 맥락** 등을 문서에 실린 내용만 사용하여 확장 설명하십시오.
@@ -81,7 +78,7 @@ def generate_node(state: GraphState):
 7. **세부 목록 분리:** 목록 항목(*)이 단락처럼 길어지지 않도록, **내용을 여러 개의 짧은 목록(*)**으로 최대한 **쪼개서** 작성하십시오.
 8. **[필수] 인라인 출처 태깅 (엄수):** 답변의 각 문단 또는 **모든** 주요 정보 뒤에는 **반드시** 해당 정보를 추출한 문서의 번호([1][2][3])를 **공백 없이 개별적으로** 붙이십시오. (예시: ...내용입니다.[1][4])
 
-[제공된 문서 번호 목록]
+[제공된 문서 목록]
 {source_list_text}"""),
         ("user", f"문서 내용:\n{context_combined}\n\n질문:\n{state['question']}")
     ]
@@ -92,21 +89,28 @@ def generate_node(state: GraphState):
     if "정보 없음" in raw_answer or not raw_answer:
         return {"answer": "정보 없음", "retry_count": state.get("retry_count", 0) + 1}
 
-    # 후처리: 번호 추출 및 본문 정제
+    # 후처리: 사용된 태그 추출
     used_tags = set(re.findall(r'\[(\d+)\]', raw_answer))
     clean_body = re.sub(r'\[\d+\]', '', raw_answer).strip()
     
+    # [수정] 출처 리스트 필터링: 웹 검색 결과는 하단 목록에서 제외
     final_sources_list = []
     for tag_str in used_tags:
         idx = int(tag_str) - 1
         if 0 <= idx < len(all_sources):
-            final_sources_list.append(all_sources[idx])
+            source_name = all_sources[idx]
+            if "실시간 웹 검색 결과" not in source_name:
+                final_sources_list.append(source_name)
     
     final_sources_sorted = sorted(list(set(final_sources_list)))
-    final_sources_text = "\n".join([f"[출처: {s}]" for s in final_sources_sorted])
-
-    full_response = f"{clean_body}\n\n{'-'*60}\n{final_sources_text if final_sources_sorted else '출처 정보 누락됨'}"
     
+    if final_sources_sorted:
+        final_sources_text = "\n".join([f"[출처: {s}]" for s in final_sources_sorted])
+        full_response = f"{clean_body}\n\n{'-'*60}\n{final_sources_text}"
+    else:
+        # 웹 검색 결과만 사용했거나 DB 출처가 의미 없는 경우 본문만 노출
+        full_response = f"{clean_body}"
+
     return {"answer": full_response, "retry_count": state.get("retry_count", 0) + 1}
 
 # ---------------------------
@@ -114,13 +118,18 @@ def generate_node(state: GraphState):
 # ---------------------------
 
 def grade_documents_router(state: GraphState) -> Literal["generate", "web_search"]:
-    print("--- [Edge] 검색 결과 평가 중 ---")
-    if not state["context"]:
-        return "web_search"
+    print("--- [Edge] 문서 적합성 평가 중 ---")
+    if not state["context"]: return "web_search"
     
+    # [수정] 단순히 단어가 포함되었는지가 아니라, 정보의 '질'을 평가
     score_prompt = f"""질문: {state['question']}
-검색된 문서(일부): {state['context'][0][:200]}...
-질문에 답변할 수 있으면 'YES', 부족하면 'NO'라고만 답하세요."""
+검색된 문서 내용: {state['context'][0][:300]}...
+
+[평가 기준]
+1. 위 문서가 질문에 대한 '역사적/학술적 해답'을 직접적으로 담고 있는가?
+2. 문서가 단순히 건물 실측, 도면 데이터, 비석의 물리적 상태 등 '기술적 보고'에 치중되어 있는가?
+
+답변 가능한 구체적 정보가 있으면 'YES', 단순히 기술적 문서이거나 정보가 부족하면 'NO'라고 답하세요."""
     
     res = llm.invoke(score_prompt)
     if "yes" in res.content.strip().lower():
@@ -128,9 +137,8 @@ def grade_documents_router(state: GraphState) -> Literal["generate", "web_search
     return "web_search"
 
 def check_quality_router(state: GraphState) -> Literal["finish", "re_generate"]:
-    print("--- [Edge] 답변 품질 검수 중 ---")
-    # 정보 없음이 떴거나 답변이 너무 부실한 경우 재시도 (최대 2회)
-    if ("정보 없음" in state["answer"] or len(state["answer"]) < 100) and state["retry_count"] < 2:
+    print("--- [Edge] 최종 품질 검수 중 ---")
+    if ("정보 없음" in state["answer"]) and state["retry_count"] < 2:
         return "re_generate"
     return "finish"
 
@@ -145,38 +153,16 @@ workflow.add_node("generate", generate_node)
 
 workflow.set_entry_point("retrieve")
 
-# 조건부 엣지 1: 검색 후 판별
-workflow.add_conditional_edges(
-    "retrieve",
-    grade_documents_router,
-    {
-        "generate": "generate",
-        "web_search": "web_search"
-    }
-)
-
+workflow.add_conditional_edges("retrieve", grade_documents_router, {"generate": "generate", "web_search": "web_search"})
 workflow.add_edge("web_search", "generate")
-
-# 조건부 엣지 2: 생성 후 품질 체크 (여기서 함수 이름을 일치시켰습니다)
-workflow.add_conditional_edges(
-    "generate",
-    check_quality_router,
-    {
-        "finish": END,
-        "re_generate": "generate"
-    }
-)
+workflow.add_conditional_edges("generate", check_quality_router, {"finish": END, "re_generate": "generate"})
 
 app = workflow.compile()
 
 # ---------------------------
-# 6. 실행부
+# 6. 실행
 # ---------------------------
 if __name__ == "__main__":
-    print("\n" + "="*60)
-    print("LangGraph Agentic RAG 시스템 가동")
-    print("="*60)
-
     while True:
         query = input("\n질문을 입력하세요 (exit 종료): ").strip()
         if query.lower() == "exit": break
@@ -187,5 +173,4 @@ if __name__ == "__main__":
         for output in app.stream(inputs):
             for key, value in output.items():
                 if key == "generate":
-                    print(f"\n[최종 결과물]:\n\n{value['answer']}")
-        print("\n" + "-"*60)
+                    print(f"\n[최종 답변]:\n\n{value['answer']}")
