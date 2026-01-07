@@ -26,7 +26,7 @@ if os.path.exists(persist_dir) and os.listdir(persist_dir):
     vectorstore = Chroma(persist_directory=persist_dir, embedding_function=embedding_model)
     retriever = vectorstore.as_retriever(search_kwargs={"k": 5})
 else:
-    print(f"[알림] 로컬 DB를 찾을 수 없어 웹 검색 위주로 동작합니다."); retriever = None
+    print(f"[알림] 로컬 DB를 찾을 수 없습니다."); retriever = None
 
 # ---------------------------
 # 2. 그래프 상태(State) 정의
@@ -92,7 +92,7 @@ def generate_node(state: GraphState):
 
 [제공된 문서 목록]
 {source_list_text}"""),
-        ("user", f"문서 내용:\n{context_combined}\n\n질문:\n{state['question']}")
+        ("user", f"문서 내용:\n{context_combined}\n\n질문:\n{state['question']}\n\n(참고: 질문에 대한 구체적인 데이터가 부족하다면, 문서 내의 가장 근접한 정보를 바탕으로 답변을 구성해 주세요.)")
     ]
     
     response = llm.invoke(prompt)
