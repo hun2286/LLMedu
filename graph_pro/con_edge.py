@@ -2,6 +2,7 @@ import os
 import re
 import sys
 import operator
+from datetime import datetime
 from typing import Annotated, List, TypedDict, Literal
 from dotenv import load_dotenv
 
@@ -15,15 +16,17 @@ from langgraph.graph import StateGraph, END
 load_dotenv()
 persist_dir = "../database/Cultural_db"
 
-llm = ChatOpenAI(model="gpt-4o", temperature=0) # 판단 정확도를 위해 0 설정
+# 판단과 생성을 위해 LLM 설정 (온도 0으로 설정하여 지침 준수 극대화)
+llm = ChatOpenAI(model="gpt-4o", temperature=0)
 embedding_model = HuggingFaceEmbeddings(model_name="bespin-global/klue-sroberta-base-continue-learning-by-mnr")
 web_search_tool = DuckDuckGoSearchRun()
 
+# DB 로드 확인
 if os.path.exists(persist_dir) and os.listdir(persist_dir):
     vectorstore = Chroma(persist_directory=persist_dir, embedding_function=embedding_model)
     retriever = vectorstore.as_retriever(search_kwargs={"k": 5})
 else:
-    print(f"[오류] DB를 찾을 수 없습니다."); sys.exit()
+    print(f"[알림] 로컬 DB를 찾을 수 없어 웹 검색 위주로 동작합니다."); retriever = None
 
 # ---------------------------
 # 2. 그래프 상태(State) 정의
@@ -41,6 +44,9 @@ class GraphState(TypedDict):
 
 def retrieve_node(state: GraphState):
     print("\n--- [Node] DB 검색 수행 중 ---")
+    if retriever is None:
+        return {"context": [], "sources": [], "retry_count": 0}
+    
     docs = retriever.invoke(state["question"])
     return {
         "context": [doc.page_content for doc in docs],
@@ -49,12 +55,19 @@ def retrieve_node(state: GraphState):
     }
 
 def web_search_node(state: GraphState):
-    print("\n--- [Node] 정보 부족 또는 부적합: 웹 검색 수행 중 ---")
-    results = web_search_tool.invoke(state["question"])
-    # 웹 검색 결과는 출처 필터링을 위해 특정 이름을 부여
+    print("\n--- [Node] 웹 검색 최적화 및 수행 중 ---")
+    
+    # [개선] 질문을 검색용 키워드로 변환
+    current_date = datetime.now().strftime("%Y-%m-%d")
+    query_gen_prompt = f"질문: {state['question']}\n현재날짜: {current_date}\n위 질문에 대해 최신 정보를 얻을 수 있는 검색어 1개만 출력하세요."
+    search_query = llm.invoke(query_gen_prompt).content.strip()
+    
+    print(f"--- [Search Query]: {search_query} ---")
+    results = web_search_tool.invoke(search_query)
+    
     return {
-        "context": [f"[W] {results}"],
-        "sources": ["실시간 웹 검색 결과"]
+        "context": [f"[실시간 웹 정보] {results}"],
+        "sources": [f"실시간 웹 검색 ({search_query})"]
     }
 
 def generate_node(state: GraphState):
@@ -67,16 +80,15 @@ def generate_node(state: GraphState):
     source_list_text = "\n".join([f"[{i+1}]: {name}" for i, name in enumerate(all_sources)])
     
     prompt = [
-        ("system", f"""당신은 제공된 문서만을 기반으로 질문에 답하는 전문 분석가입니다.
-엄격 지침:
-1. **정보 근거:** 답변은 반드시 제공된 [문서 내용]에 근거해야 합니다. 문서에 내용이 없으면 **"정보 없음"**이라고만 답변하세요.
-2. **답변 형식 (Markdown):** 답변은 **마크다운(Markdown) 형식**을 사용하여 제목(##), 목록(*), 볼드체(**) 등으로 구조화하여 작성하십시오.
-3. **내용 확장:** 문서 내용이 충분할 경우, 단순 요약을 넘어 **핵심 개념의 의미, 구체적 사례, 역사적 맥락** 등을 문서에 실린 내용만 사용하여 확장 설명하십시오.
-4. **금지 사항:** 문서에 근거 없는 가정, 추론, 창작, 외부 지식, '참고:', '다음과 같습니다', '설명은 생략합니다' 등의 안내 문구를 절대 포함하지 마십시오.
-5. **출처 표기 (본문):** 답변 내용에 출처 표기(예: [출처: PDF 제목])를 절대 포함하지 마십시오.
-6. **줄 바꿈 및 가독성:** 답변의 **가독성을 최우선**으로 확보해야 합니다. **목록 항목(*)**의 내용이 길어지더라도, 각 항목 내에서 의미 단위가 끝날 때마다 **줄 바꿈(개행)을 충분히 활용**하여 내용이 밀집되어 보이지 않도록 작성하십시오.
-7. **세부 목록 분리:** 목록 항목(*)이 단락처럼 길어지지 않도록, **내용을 여러 개의 짧은 목록(*)**으로 최대한 **쪼개서** 작성하십시오.
-8. **[필수] 인라인 출처 태깅 (엄수):** 답변의 각 문단 또는 **모든** 주요 정보 뒤에는 **반드시** 해당 정보를 추출한 문서의 번호([1][2][3])를 **공백 없이 개별적으로** 붙이십시오. (예시: ...내용입니다.[1][4])
+        ("system", f"""당신은 전문 분석가입니다. 아래의 엄격 지침을 100% 준수하십시오.
+
+[핵심 지침]
+1. **정보 근거:** 답변은 반드시 제공된 [문서 내용] 또는 [실시간 웹 정보]에 근거해야 합니다. 정보가 전혀 없으면 "정보 없음"이라고 답변하세요.
+2. **최신성 유지:** 질문이 최신 이슈라면 [실시간 웹 정보]를 최우선으로 분석하십시오.
+3. **답변 형식:** 마크다운(Markdown)을 사용하여 제목(##), 목록(*), 볼드체(**)로 구조화하십시오.
+4. **가독성:** 의미 단위로 줄 바꿈을 자주 사용하고, 목록 항목을 짧게 쪼개십시오.
+5. **인라인 출처:** 모든 주요 정보 뒤에 문서 번호([1][2])를 공백 없이 붙이십시오.
+6. **금지 사항:** '참고:', '다음과 같습니다' 등의 사족을 절대 쓰지 마십시오.
 
 [제공된 문서 목록]
 {source_list_text}"""),
@@ -89,28 +101,22 @@ def generate_node(state: GraphState):
     if "정보 없음" in raw_answer or not raw_answer:
         return {"answer": "정보 없음", "retry_count": state.get("retry_count", 0) + 1}
 
-    # 후처리: 사용된 태그 추출
+    # 후처리: 번호 추출 및 본문 정제
     used_tags = set(re.findall(r'\[(\d+)\]', raw_answer))
     clean_body = re.sub(r'\[\d+\]', '', raw_answer).strip()
     
-    # [수정] 출처 리스트 필터링: 웹 검색 결과는 하단 목록에서 제외
+    # 웹 검색 결과는 하단 출처 리스트에서 제외
     final_sources_list = []
     for tag_str in used_tags:
         idx = int(tag_str) - 1
-        if 0 <= idx < len(all_sources):
-            source_name = all_sources[idx]
-            if "실시간 웹 검색 결과" not in source_name:
-                final_sources_list.append(source_name)
+        if 0 <= idx < len(all_sources) and "웹 검색" not in all_sources[idx]:
+            final_sources_list.append(all_sources[idx])
     
     final_sources_sorted = sorted(list(set(final_sources_list)))
-    
-    if final_sources_sorted:
-        final_sources_text = "\n".join([f"[출처: {s}]" for s in final_sources_sorted])
-        full_response = f"{clean_body}\n\n{'-'*60}\n{final_sources_text}"
-    else:
-        # 웹 검색 결과만 사용했거나 DB 출처가 의미 없는 경우 본문만 노출
-        full_response = f"{clean_body}"
+    final_sources_text = "\n".join([f"[출처: {s}]" for s in final_sources_sorted])
 
+    full_response = f"{clean_body}\n\n{'-'*60}\n{final_sources_text}" if final_sources_sorted else clean_body
+    
     return {"answer": full_response, "retry_count": state.get("retry_count", 0) + 1}
 
 # ---------------------------
@@ -121,24 +127,13 @@ def grade_documents_router(state: GraphState) -> Literal["generate", "web_search
     print("--- [Edge] 문서 적합성 평가 중 ---")
     if not state["context"]: return "web_search"
     
-    # [수정] 단순히 단어가 포함되었는지가 아니라, 정보의 '질'을 평가
-    score_prompt = f"""질문: {state['question']}
-검색된 문서 내용: {state['context'][0][:300]}...
-
-[평가 기준]
-1. 위 문서가 질문에 대한 '역사적/학술적 해답'을 직접적으로 담고 있는가?
-2. 문서가 단순히 건물 실측, 도면 데이터, 비석의 물리적 상태 등 '기술적 보고'에 치중되어 있는가?
-
-답변 가능한 구체적 정보가 있으면 'YES', 단순히 기술적 문서이거나 정보가 부족하면 'NO'라고 답하세요."""
-    
+    score_prompt = f"질문: {state['question']}\n내용: {state['context'][0][:200]}\n답변 가능한 구체적 정보가 있으면 'YES', 부족하면 'NO'라고만 답하세요."
     res = llm.invoke(score_prompt)
-    if "yes" in res.content.strip().lower():
-        return "generate"
-    return "web_search"
+    return "generate" if "yes" in res.content.strip().lower() else "web_search"
 
 def check_quality_router(state: GraphState) -> Literal["finish", "re_generate"]:
-    print("--- [Edge] 최종 품질 검수 중 ---")
-    if ("정보 없음" in state["answer"]) and state["retry_count"] < 2:
+    print("--- [Edge] 품질 검수 중 ---")
+    if "정보 없음" in state["answer"] and state["retry_count"] < 2:
         return "re_generate"
     return "finish"
 
@@ -152,7 +147,6 @@ workflow.add_node("web_search", web_search_node)
 workflow.add_node("generate", generate_node)
 
 workflow.set_entry_point("retrieve")
-
 workflow.add_conditional_edges("retrieve", grade_documents_router, {"generate": "generate", "web_search": "web_search"})
 workflow.add_edge("web_search", "generate")
 workflow.add_conditional_edges("generate", check_quality_router, {"finish": END, "re_generate": "generate"})
@@ -169,7 +163,6 @@ if __name__ == "__main__":
         if not query: continue
 
         inputs = {"question": query, "context": [], "sources": [], "retry_count": 0}
-        
         for output in app.stream(inputs):
             for key, value in output.items():
                 if key == "generate":
