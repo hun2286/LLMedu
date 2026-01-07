@@ -83,8 +83,8 @@ def generate_node(state: GraphState):
         ("system", f"""당신은 전문 분석가입니다. 아래의 엄격 지침을 100% 준수하십시오.
 
 [핵심 지침]
-1. **정보 근거:** 답변은 반드시 제공된 [문서 내용] 또는 [실시간 웹 정보]에 근거해야 합니다. 정보가 전혀 없으면 "정보 없음"이라고 답변하세요.
-2. **최신성 유지:** 질문이 최신 이슈라면 [실시간 웹 정보]를 최우선으로 분석하십시오.
+1. **정보 근거:** 답변은 반드시 제공된 [문서 내용] 또는 [실시간 웹 정보]에 근거해야 합니다. 단, 질문과 100% 일치하는 특정 수치가 없더라도 관련 있는 유사 정보가 있다면 이를 활용하여 최대한 답변하십시오. 관련 정보가 전무할 때만 "정보 없음"이라고 답변하세요.
+2. **최신성 및 맥락 분석:** 최신 이슈는 [실시간 웹 정보]를 최우선으로 하되, 검색 결과가 파편화되어 있다면 맥락을 파악하여 사용자에게 유용한 정보로 재구성하십시오.
 3. **답변 형식:** 마크다운(Markdown)을 사용하여 제목(##), 목록(*), 볼드체(**)로 구조화하십시오.
 4. **가독성:** 의미 단위로 줄 바꿈을 자주 사용하고, 목록 항목을 짧게 쪼개십시오.
 5. **인라인 출처:** 모든 주요 정보 뒤에 문서 번호([1][2])를 공백 없이 붙이십시오.
@@ -125,9 +125,15 @@ def generate_node(state: GraphState):
 
 def grade_documents_router(state: GraphState) -> Literal["generate", "web_search"]:
     print("--- [Edge] 문서 적합성 평가 중 ---")
-    if not state["context"]: return "web_search"
     
-    score_prompt = f"질문: {state['question']}\n내용: {state['context'][0][:200]}\n답변 가능한 구체적 정보가 있으면 'YES', 부족하면 'NO'라고만 답하세요."
+    # DB 결과가 아주 많고 핵심 키워드가 겹치면 바로 생성으로 보냄
+    score_prompt = f"""질문: {state['question']}
+    내용: {state['context'][0][:500]}
+    [판단] 
+    위 내용에 질문에 대한 명확한 순서나 정의가 포함되어 있습니까?
+    이미 충분한 정보가 있다면 'YES'를, 최신 정보 확인이 꼭 필요할 것 같으면 'NO'를 하세요.
+    답변: """
+    
     res = llm.invoke(score_prompt)
     return "generate" if "yes" in res.content.strip().lower() else "web_search"
 
