@@ -2,6 +2,7 @@ import os
 import re
 import sys
 import operator
+import json
 from datetime import datetime
 from typing import Annotated, List, TypedDict, Literal
 from dotenv import load_dotenv
@@ -9,7 +10,7 @@ from dotenv import load_dotenv
 from langchain_openai import ChatOpenAI
 from langchain_community.vectorstores import Chroma
 from langchain_huggingface import HuggingFaceEmbeddings
-from langchain_community.tools import DuckDuckGoSearchRun
+from langchain_community.tools import DuckDuckGoSearchResults
 from langgraph.graph import StateGraph, END
 
 # 1. 환경 설정 및 로드
@@ -18,7 +19,7 @@ persist_dir = "../database/Cultural_db"
 
 llm = ChatOpenAI(model="gpt-4o", temperature=0)
 embedding_model = HuggingFaceEmbeddings(model_name="bespin-global/klue-sroberta-base-continue-learning-by-mnr")
-web_search_tool = DuckDuckGoSearchRun()
+web_search_tool = DuckDuckGoSearchResults(num_results=3)
 
 if os.path.exists(persist_dir) and os.listdir(persist_dir):
     vectorstore = Chroma(persist_directory=persist_dir, embedding_function=embedding_model)
@@ -48,42 +49,46 @@ def retrieve_node(state: GraphState):
     }
 
 def web_search_node(state: GraphState):
-    print("\n--- [Node] 웹 검색 최적화 및 수행 중 ---")
+    print("\n--- [Node] 웹 검색 수행 중 ---")
     
-    current_date = datetime.now().strftime("%Y-%m-%d")
-    
-    # [개선] 최신성 강박 해결: 질문 성격에 따라 날짜 포함 여부 결정
+    # [수정] 검색어에 날짜를 넣지 말고 지역명과 날씨 위주로 생성하도록 유도
     query_gen_prompt = f"""사용자 질문: {state['question']}
-현재 날짜: {current_date}
-
-위 질문에 대해 최적의 검색어 1개만 생성하세요.
-- 질문이 날씨, 뉴스, 주가 등 실시간 정보나 특정 시점의 정보를 묻는 경우에만 날짜({current_date})를 포함하세요.
-- 질문이 역사, 원리, 재료 등 일반적인 지식을 묻는 경우 날짜를 절대 포함하지 말고 핵심 키워드만 사용하세요.
+위 질문에 대해 가장 최신 정보를 찾을 수 있는 검색어 1개만 생성하세요.
+- 날씨의 경우 '지역명 날씨' 형태로 생성하세요 (예: 광주 수기동 날씨)
+- 날짜를 검색어에 포함하지 마세요.
 검색어:"""
     
     search_query = llm.invoke(query_gen_prompt).content.strip().replace('"', '')
     print(f"--- [Search Query]: {search_query} ---")
     
     results = web_search_tool.invoke(search_query)
+    
+    # [수정] 데이터가 리스트 형태면 읽기 쉽게 변환
+    if isinstance(results, list):
+        content_text = "\n".join([f"- {res.get('snippet', '')}" for res in results])
+    else:
+        content_text = str(results)
+
+    print(f"--- [Raw Result Success] ---")
+
     return {
-        "context": [f"[실시간 웹 정보] {results}"],
+        "context": [f"### [검색된 실시간 정보]\n{content_text}"],
         "sources": ["웹 검색"]
     }
 
 def generate_node(state: GraphState):
     print("\n--- [Node] 답변 생성 중 ---")
-    
     all_contexts = state.get("context", [])
     context_combined = "\n\n".join(all_contexts)
     
     prompt = [
-            ("system", """당신은 전문 분석가입니다. 
-    1. 제공된 [데이터]를 바탕으로 사용자의 질문에 친절하게 답하십시오.
-    2. 데이터에 구체적인 수치가 없더라도, 관련된 정보를 활용하여 최대한 도움이 되는 답변을 구성하십시오.
-    3. 마크다운(##, *, **) 형식을 활용하여 가독성 있게 작성하십시오.
-    4. 부연 설명 없이 질문에 대한 핵심 답변만 깔끔하게 구성하십시오."""), 
-            ("user", f"[데이터]:\n{context_combined}\n\n질문:\n{state['question']}")
-        ]
+        ("system", """당신은 실시간 검색 결과를 바탕으로 답변하는 전문가입니다.
+1. [데이터] 섹션의 '검색된 실시간 정보'는 현재 시점의 실제 정보입니다. 
+2. 당신의 내부 가이드라인보다 [데이터]의 내용을 우선하십시오.
+3. 절대 "기상청을 확인하라"거나 "정보가 없다"는 말을 하지 마십시오.
+4. [데이터]에 적힌 날씨, 기온, 하늘 상태 중 하나라도 있다면 그것을 활용해 구체적으로 답하십시오."""), 
+        ("user", f"[데이터]:\n{context_combined}\n\n질문:\n{state['question']}")
+    ]
     
     response = llm.invoke(prompt)
     return {"answer": response.content.strip(), "retry_count": state.get("retry_count", 0) + 1}
