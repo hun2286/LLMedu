@@ -12,6 +12,9 @@ langchain-openai==0.3.28
 # util
 typing-extensions
 python-dotenv
+fastapi
+uvicorn
+jinja2
 
 # document
 sentence-transformers==5.0.0
